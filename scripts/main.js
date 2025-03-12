@@ -387,16 +387,13 @@ world.afterEvents.itemUse.subscribe((ev) => {
 });
 
 /**
- * ブロック破壊時のイベント処理
+ * ブロック破壊前のイベント処理
  * @event beforeEvents.playerBreakBlock
  * @param {PlayerBreakBlockBeforeEvent} ev - イベントデータ
  * @param {Player} ev.player - ブロックを破壊したプレイヤー
  * @param {Block} ev.block - 破壊されたブロック
  * @param {boolean} ev.cancel - イベントのキャンセルフラグ
- * @description 
- * - クリエイティブモード: ブロックの設定を削除
- * - サバイバルモード: 中間ブロックの設置と再生成タイマーの開始
- * - 中間ブロック状態: 破壊を防止
+ * @description 中間ブロックの破壊を防止する
  */
 world.beforeEvents.playerBreakBlock.subscribe((ev) => {
     const { player, block } = ev;
@@ -407,17 +404,37 @@ world.beforeEvents.playerBreakBlock.subscribe((ev) => {
     const blockInfo = DynamicPropertyManager.get(blockKey);
     if (!blockInfo) return;
     
-    // クリエイティブモードの場合は設定を削除
-    if (player.getGameMode() === GameMode.creative) {
-        const loc = block.location;
-        DynamicPropertyManager.remove(blockKey);
-        player.sendMessage('§eクリエイティブモードでブロックの設定を削除しました');
-        return;
-    }
-    
     // 中間ブロックの破壊を防止
     if (blockInfo.breaked && blockInfo.time > 0) {
         ev.cancel = true;
+        player.sendMessage('§c再生成中のブロックは破壊できません');
+        return;
+    }
+});
+
+/**
+ * ブロック破壊後のイベント処理
+ * @event afterEvents.playerBreakBlock
+ * @param {PlayerBreakBlockAfterEvent} ev - イベントデータ
+ * @param {Player} ev.player - ブロックを破壊したプレイヤー
+ * @param {Block} ev.block - 破壊されたブロック
+ * @description 
+ * - クリエイティブモード: ブロックの設定を削除
+ * - サバイバルモード: 中間ブロックの設置と再生成タイマーの開始
+ */
+world.afterEvents.playerBreakBlock.subscribe((ev) => {
+    const { player, block } = ev;
+    const locationId = getLocationId(block.location.x, block.location.y, block.location.z);
+    const blockKey = DynamicPropertyManager.getBlockKey(locationId);
+    
+    // ブロック情報の取得
+    const blockInfo = DynamicPropertyManager.get(blockKey);
+    if (!blockInfo) return;
+    
+    // クリエイティブモードの場合は設定を削除
+    if (player.getGameMode() === GameMode.creative) {
+        DynamicPropertyManager.remove(blockKey);
+        player.sendMessage('§eクリエイティブモードでブロックの設定を削除しました');
         return;
     }
     
