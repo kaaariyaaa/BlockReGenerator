@@ -57,10 +57,11 @@ const CONSTANTS = {
 
 /**
  * 座標からユニークなIDを生成する
- * @param {number} x - X座標
- * @param {number} y - Y座標
- * @param {number} z - Z座標
+ * @param {number} x - X座標（-30,000,000から30,000,000の範囲）
+ * @param {number} y - Y座標（-30,000,000から30,000,000の範囲）
+ * @param {number} z - Z座標（-30,000,000から30,000,000の範囲）
  * @returns {string} 座標から生成された15桁のユニークID
+ *                   各座標は5桁に正規化され、連結される
  */
 function getLocationId(x, y, z) {
     // 負の座標を正の値に変換
@@ -76,20 +77,21 @@ function getLocationId(x, y, z) {
 
 /**
  * DynamicPropertyの操作をラップするマネージャー
- * @namespace
+ * @namespace DynamicPropertyManager
  */
 const DynamicPropertyManager = {
     /**
      * ブロックのキーを生成
-     * @param {string} locationId - 位置ID
-     * @returns {string} プロパティキー
+     * @param {string} locationId - 位置ID（15桁の数値文字列）
+     * @returns {string} プロパティキー（'block:'プレフィックス + 位置ID）
      */
     getBlockKey: (locationId) => `${CONSTANTS.PROPERTY_PREFIX}${locationId}`,
     
     /**
      * プロパティの取得と自動的なJSONパース
      * @param {string} key - プロパティキー
-     * @returns {Object|null} 取得したデータ、失敗時はnull
+     * @returns {Object|null} 取得したデータ（パース済み）、エラー時はnull
+     * @throws {Error} JSONパースに失敗した場合
      */
     get: (key) => {
         try {
@@ -104,8 +106,9 @@ const DynamicPropertyManager = {
     /**
      * プロパティの設定と自動的なJSON文字列化
      * @param {string} key - プロパティキー
-     * @param {Object} value - 保存するデータ
-     * @returns {boolean} 成功したかどうか
+     * @param {Object} value - 保存するデータ（任意のJSONシリアライズ可能なオブジェクト）
+     * @returns {boolean} 成功した場合はtrue、失敗した場合はfalse
+     * @throws {Error} JSONシリアライズに失敗した場合
      */
     set: (key, value) => {
         try {
@@ -120,7 +123,7 @@ const DynamicPropertyManager = {
     /**
      * プロパティの削除
      * @param {string} key - プロパティキー
-     * @returns {boolean} 成功したかどうか
+     * @returns {boolean} 成功した場合はtrue、失敗した場合はfalse
      */
     remove: (key) => {
         try {
@@ -135,14 +138,17 @@ const DynamicPropertyManager = {
 
 /**
  * ブロック情報の操作をラップするマネージャー
- * @namespace
+ * @namespace BlockManager
  */
 const BlockManager = {
     /**
      * ブロック情報オブジェクトの作成
-     * @param {Block} block - 対象のブロック
+     * @param {Block} block - 対象のブロック（位置情報とディメンション情報を含む）
      * @param {Object} settings - 設定データ
-     * @returns {Object} ブロック情報
+     * @param {string} settings.genTime - 再生成時間（tick）
+     * @param {string} settings.blockType - ブロックの種類
+     * @param {string} settings.midBlockType - 中間ブロックの種類
+     * @returns {Object} 初期化されたブロック情報オブジェクト
      */
     createBlockInfo: (block, settings) => ({
         location: block.location,          // ブロックの座標
@@ -158,9 +164,9 @@ const BlockManager = {
     /**
      * ブロックの設置
      * @param {Dimension} dimension - 対象のディメンション
-     * @param {BlockLocation} location - 設置位置
-     * @param {string} blockType - ブロックタイプ
-     * @returns {boolean} 成功したかどうか
+     * @param {BlockLocation} location - 設置位置（x, y, z座標を含む）
+     * @param {string} blockType - ブロックタイプ（例: 'minecraft:diamond_ore'）
+     * @returns {boolean} 設置に成功した場合はtrue、失敗した場合はfalse
      */
     setBlock: (dimension, location, blockType) => {
         try {
@@ -175,7 +181,10 @@ const BlockManager = {
     /**
      * ブロック情報の有効性チェック
      * @param {Object} blockInfo - チェックするブロック情報
-     * @returns {boolean} 有効なブロック情報かどうか
+     * @param {Vector3} blockInfo.location - ブロックの座標
+     * @param {string} blockInfo.blockType - ブロックの種類
+     * @param {string} blockInfo.midBlockType - 中間ブロックの種類
+     * @returns {boolean} 有効なブロック情報の場合はtrue、無効な場合はfalse
      */
     isValidBlockInfo: (blockInfo) => {
         return blockInfo && 
@@ -187,6 +196,9 @@ const BlockManager = {
 
 /**
  * 設定フォームの表示と処理
+ * @param {Player} player - フォームを表示するプレイヤー
+ *                         プレイヤーの権限とゲームモードに応じて表示
+ * @throws {Error} フォームの表示に失敗した場合
  */
 function showSettingFormModal(player) {
     // フォームの作成
@@ -207,6 +219,12 @@ function showSettingFormModal(player) {
 
 /**
  * フォームの送信結果を処理
+ * @param {Player} player - フォームを送信したプレイヤー
+ * @param {FormResponse} formData - フォームの送信データ
+ * @param {Array<string>} formData.formValues - フォームの入力値
+ *                                              [0]: 再生成時間
+ *                                              [1]: ブロックタイプ
+ *                                              [2]: 中間ブロックタイプ
  */
 function handleFormSubmission(player, formData) {
     // フォームデータの有効性チェック
@@ -231,6 +249,13 @@ function handleFormSubmission(player, formData) {
 
 /**
  * ブロックへの設定の適用
+ * @param {Block} block - 設定を適用するブロック
+ *                       ブロックの位置情報とディメンション情報を含む
+ * @param {Object} settings - ブロックの再生成設定
+ * @param {string} settings.genTime - 再生成までの時間（tick）
+ * @param {string} settings.blockType - 再生成するブロックの種類
+ * @param {string} settings.midBlockType - 中間状態のブロックの種類
+ * @returns {boolean} 設定の適用が成功したかどうか
  */
 function settingBlock(block, settings) {
     // ブロックの位置からユニークIDを生成
@@ -238,13 +263,15 @@ function settingBlock(block, settings) {
     const blockKey = DynamicPropertyManager.getBlockKey(locationId);
     
     // 既存の設定をチェック
-    if (DynamicPropertyManager.get(blockKey)) {
-        world.sendMessage('§e警告: 既存の設定を上書きします');
+    const existingBlockInfo = DynamicPropertyManager.get(blockKey);
+    if (existingBlockInfo) {
+        world.sendMessage('§cこのブロックは既に設定されています');
+        return false;
     }
     
     // 新しい設定を適用
     const blockInfo = BlockManager.createBlockInfo(block, settings);
-    DynamicPropertyManager.set(blockKey, blockInfo);
+    return DynamicPropertyManager.set(blockKey, blockInfo);
 }
 
 /**
@@ -271,6 +298,17 @@ system.runInterval(() => {
 
 /**
  * ブロックの状態更新処理
+ * @param {string} dataId - ブロック情報のプロパティキー
+ *                         'block:' で始まるユニークな識別子
+ * @param {Object} blockInfo - ブロックの状態情報
+ * @param {Vector3} blockInfo.location - ブロックの座標（x, y, z）
+ * @param {number} blockInfo.time - 現在の再生成までの残り時間（tick）
+ * @param {number} blockInfo.genTime - 設定された再生成時間（tick）
+ * @param {string} blockInfo.blockType - 元のブロックの種類（例: 'minecraft:diamond_ore'）
+ * @param {string} blockInfo.midBlockType - 中間ブロックの種類（例: 'minecraft:cobblestone'）
+ * @param {string} blockInfo.dimensionId - ブロックが存在するディメンションのID
+ * @param {boolean} blockInfo.configured - 初期設定が完了しているかどうか
+ * @param {boolean} blockInfo.breaked - ブロックが破壊状態かどうか
  */
 function handleBlockUpdate(dataId, blockInfo) {
     const dimension = world.getDimension(blockInfo.dimensionId);
@@ -300,8 +338,12 @@ function handleBlockUpdate(dataId, blockInfo) {
 
 /**
  * ブロックとの対話イベント処理
- * ブロックに再生成設定を適用する
  * @event beforeEvents.playerInteractWithBlock
+ * @param {PlayerInteractWithBlockBeforeEvent} ev - イベントデータ
+ * @param {Player} ev.player - 対話を行ったプレイヤー
+ * @param {Block} ev.block - 対話されたブロック
+ * @param {ItemStack} ev.itemStack - プレイヤーが手に持っているアイテム
+ * @param {boolean} ev.isFirstEvent - 重複イベントでないことを示すフラグ
  */
 world.beforeEvents.playerInteractWithBlock.subscribe((ev) => {
     const { player, block , itemStack: item, isFirstEvent} = ev;
@@ -328,8 +370,11 @@ world.beforeEvents.playerInteractWithBlock.subscribe((ev) => {
 
 /**
  * アイテム使用イベント処理
- * スニーク状態でトリガーアイテムを使用した際に設定画面を表示
  * @event afterEvents.itemUse
+ * @param {ItemUseAfterEvent} ev - イベントデータ
+ * @param {Player} ev.source - アイテムを使用したプレイヤー
+ * @param {ItemStack} ev.itemStack - 使用されたアイテム
+ * @description スニーク状態でトリガーアイテムを使用した際に設定画面を表示
  */
 world.afterEvents.itemUse.subscribe((ev) => {
     const { source: player, itemStack: item } = ev;
@@ -343,6 +388,15 @@ world.afterEvents.itemUse.subscribe((ev) => {
 
 /**
  * ブロック破壊時のイベント処理
+ * @event beforeEvents.playerBreakBlock
+ * @param {PlayerBreakBlockBeforeEvent} ev - イベントデータ
+ * @param {Player} ev.player - ブロックを破壊したプレイヤー
+ * @param {Block} ev.block - 破壊されたブロック
+ * @param {boolean} ev.cancel - イベントのキャンセルフラグ
+ * @description 
+ * - クリエイティブモード: ブロックの設定を削除
+ * - サバイバルモード: 中間ブロックの設置と再生成タイマーの開始
+ * - 中間ブロック状態: 破壊を防止
  */
 world.beforeEvents.playerBreakBlock.subscribe((ev) => {
     const { player, block } = ev;
