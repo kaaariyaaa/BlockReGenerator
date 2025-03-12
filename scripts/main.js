@@ -299,34 +299,20 @@ function handleBlockUpdate(dataId, blockInfo) {
 }
 
 /**
- * アイテム使用時のイベント処理
+ * ブロックとの対話イベント処理
+ * ブロックに再生成設定を適用する
+ * @event beforeEvents.playerInteractWithBlock
  */
-world.afterEvents.itemUse.subscribe((ev) => {
-    const { source: player, itemStack: item } = ev;
+world.beforeEvents.playerInteractWithBlock.subscribe((ev) => {
+    const { player, block , itemStack: item, isFirstEvent} = ev;
+    // 重複イベントの防止
+    if(!isFirstEvent) return;
 
-    // スニーク時は設定フォームを表示
-    if (player.isSneaking) {
-        showSettingFormModal(player);
-        return;
-    }
-    
-    // プレイヤーの視線上のブロックを取得
-    let block;
-    try {
-        const blockResult = player.getBlockFromViewDirection();
-        if (!blockResult) {
-            player.sendMessage('§cブロックが見つかりません。ブロックを見て操作してください。');
-            return;
-        }
-        block = blockResult.block;
-    } catch (error) {
-        console.warn(`プレイヤー ${player.name} のブロック取得に失敗: ${error}`);
-        player.sendMessage('§cブロックの取得に失敗しました。');
-        return;
-    }
-    
     // トリガーアイテムとブロックの確認
-    if (item.typeId !== CONSTANTS.TRIGGER_ITEM || block.isAir) return;
+    // - トリガーアイテムであること
+    // - 対象が空気ブロックでないこと
+    // - スニーク状態でないこと
+    if (item.typeId !== CONSTANTS.TRIGGER_ITEM || block.isAir || player.isSneaking) return;
     
     // 設定の取得と確認
     const settings = DynamicPropertyManager.get(CONSTANTS.SETTING_KEY);
@@ -338,6 +324,21 @@ world.afterEvents.itemUse.subscribe((ev) => {
     // ブロックに設定を適用
     settingBlock(block, settings);
     player.sendMessage('§aブロックを設定しました。');
+});
+
+/**
+ * アイテム使用イベント処理
+ * スニーク状態でトリガーアイテムを使用した際に設定画面を表示
+ * @event afterEvents.itemUse
+ */
+world.afterEvents.itemUse.subscribe((ev) => {
+    const { source: player, itemStack: item } = ev;
+
+    // スニーク状態でトリガーアイテムを使用した場合のみ設定画面を表示
+    if (player.isSneaking && item.typeId === CONSTANTS.TRIGGER_ITEM) {
+        showSettingFormModal(player);
+        return;
+    }
 });
 
 /**
