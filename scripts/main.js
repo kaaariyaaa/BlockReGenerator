@@ -201,12 +201,19 @@ const BlockManager = {
  * @throws {Error} フォームの表示に失敗した場合
  */
 function showSettingFormModal(player) {
+    // 前回の設定を取得
+    const previousSettings = DynamicPropertyManager.get(CONSTANTS.SETTING_KEY) || {
+        genTime: CONSTANTS.DEFAULT_VALUES.GEN_TIME,
+        blockType: CONSTANTS.DEFAULT_VALUES.BLOCK_TYPE,
+        midBlockType: CONSTANTS.DEFAULT_VALUES.MID_BLOCK_TYPE
+    };
+
     // フォームの作成
     const form = new ModalFormData()
         .title('BlockReGeneratorSetting')
-        .textField('再生成時間（tick）', '整数を入力', CONSTANTS.DEFAULT_VALUES.GEN_TIME)
-        .textField('生成ブロック', '', CONSTANTS.DEFAULT_VALUES.BLOCK_TYPE)
-        .textField('中間ブロック', '', CONSTANTS.DEFAULT_VALUES.MID_BLOCK_TYPE);
+        .textField('再生成時間（tick）', '整数を入力', previousSettings.genTime)
+        .textField('生成ブロック', '', previousSettings.blockType)
+        .textField('中間ブロック', '', previousSettings.midBlockType);
 
     // フォームの表示と結果の処理
     form.show(player)
